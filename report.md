@@ -38,135 +38,204 @@
 
 ```cpp
 #include <iostream>
-#include <sstream>
-#include <string>
+#include <cmath>  
+using namespace std;
 
-class Polynomial;
 
-// Term 類別：代表一個多項式中的一項，例如 3x^2
-class Term {
-    // 讓 Polynomial 類別與 I/O 運算子可以存取 private 成員
-    friend class Polynomial;
-    friend std::ostream& operator<<(std::ostream& os, const Term& term);
-    friend std::istream& operator>>(std::istream& is, Term& term);
-private:
-    float coef;  // 係數
-    int exp;     // 指數
-public:
-    // 建構子（預設的係數為 0，指數為 0）
-    Term(float c = 0.0, int e = 0) : coef(c), exp(e) {}
-    
-    // Getter：取得係數與指數
-    float getCoef() const { return coef; }
-    int getExp() const { return exp; }
+struct Node {
+    int coef;   // 係數
+    int exp;    // 指數
+    Node* link; // 指向下一個節點
+
+    Node(int c = 0, int e = 0, Node* l = nullptr) : coef(c), exp(e), link(l) {}
 };
 
-// Polynomial 類別：為了儲存多項式的多個項（Term）
 class Polynomial {
-    friend std::ostream& operator<<(std::ostream& os, const Polynomial& poly);
-    friend std::istream& operator>>(std::istream& is, Polynomial& poly);
 private:
-    Term* termArray;   // 動態陣列儲存項目
-    int capacity;      // 陣列的最大容量
-    int terms;         // 目前的項目數量
+    Node* head;  // 頭節點（header node）
 
-    // 當項目超過容量時，擴展容量為原本的兩倍
-    void expandCapacity() {
-        capacity *= 2;
-        Term* newArray = new Term[capacity];
-        for (int i = 0; i < terms; ++i)
-            newArray[i] = termArray[i];
-        delete[] termArray;
-        termArray = newArray;
+    // 清除所有節點
+    void clear() {
+        Node* curr = head->link;
+        while (curr != head) {
+            Node* temp = curr;
+            curr = curr->link;
+            delete temp;
+        }
+        head->link = head;
     }
 
-    // 將項目按照指數從大到小排序（泡沫排序法）
-    void sortTerms() {
-        for (int i = 0; i < terms - 1; ++i)
-            for (int j = i + 1; j < terms; ++j)
-                if (termArray[i].exp < termArray[j].exp) {
-                    Term temp = termArray[i];
-                    termArray[i] = termArray[j];
-                    termArray[j] = temp;
-                }
+    // 從另一個多項式 (Polynomial) 複製節點內容
+    void copy(const Polynomial& other) {
+        Node* tail = head;
+        for (Node* p = other.head->link; p != other.head; p = p->link) {
+            tail->link = new Node(p->coef, p->exp, head);
+            tail = tail->link;
+        }
     }
 
 public:
-    // 建構子：初始化項目陣列與容量
-    Polynomial(int initialCapacity = 4) : capacity(initialCapacity), terms(0) {
-        termArray = new Term[capacity];
+    // 建構子：初始化循環鏈結串列
+    Polynomial() {
+        head = new Node();
+        head->link = head;
     }
 
-    // 解構子：釋放動態記憶體
+    // 複製建構子
+    Polynomial(const Polynomial& other) {
+        head = new Node();
+        head->link = head;
+        copy(other);
+    }
+
+    // 釋放記憶體
     ~Polynomial() {
-        delete[] termArray;
+        clear();
+        delete head;
     }
 
-    // 新增一個項目進入多項式
-    void addTerm(float c, int e) {
-        if (terms >= capacity) expandCapacity();  // 超過容量就擴充
-        termArray[terms++] = Term(c, e);          // 加入新項
+    // 避免自我指派並複製節點
+    Polynomial& operator=(const Polynomial& other) {
+        if (this != &other) {
+            clear();
+            copy(other);
+        }
+        return *this;
+    }
+
+    // 輸入多項式（ n c1 e1 c2 e2 ...）
+    friend istream& operator>>(istream& in, Polynomial& x) {
+        int n;
+        in >> n;           // 讀入項數
+        x.clear();         // 清除原有內容
+        Node* tail = x.head;
+        for (int i = 0; i < n; i++) {
+            int c, e;
+            in >> c >> e;  // 每一項的係數與指數
+            tail->link = new Node(c, e, x.head);
+            tail = tail->link;
+        }
+        return in;
+    }
+
+    // 輸出多項式（例如：2x^3 - 4x + 5）
+    friend ostream& operator<<(ostream& out, const Polynomial& x) {
+        Node* p = x.head->link;
+        bool first = true;
+        while (p != x.head) {
+            if (!first && p->coef >= 0)
+                out << " + ";
+
+            // 格式化輸出
+            if (p->exp == 0)
+                out << p->coef;
+            else if (p->exp == 1)
+                out << p->coef << "x";
+            else
+                out << p->coef << "x^" << p->exp;
+
+            first = false;
+            p = p->link;
+        }
+        if (first) out << "0"; // 空多項式
+        return out;
+    }
+
+    // 多項式加法
+    Polynomial operator+(const Polynomial& b) const {
+        Polynomial result;
+        Node* aPtr = head->link;
+        Node* bPtr = b.head->link;
+        Node* tail = result.head;
+
+        while (aPtr != head && bPtr != b.head) {
+            if (aPtr->exp > bPtr->exp) {
+                tail->link = new Node(aPtr->coef, aPtr->exp, result.head);
+                aPtr = aPtr->link;
+            } else if (aPtr->exp < bPtr->exp) {
+                tail->link = new Node(bPtr->coef, bPtr->exp, result.head);
+                bPtr = bPtr->link;
+            } else {
+                int sum = aPtr->coef + bPtr->coef;
+                if (sum != 0)
+                    tail->link = new Node(sum, aPtr->exp, result.head);
+                aPtr = aPtr->link;
+                bPtr = bPtr->link;
+            }
+            if (tail->link) tail = tail->link;
+        }
+
+        // 剩下的項目（其中一方還沒走完）
+        while (aPtr != head) {
+            tail->link = new Node(aPtr->coef, aPtr->exp, result.head);
+            tail = tail->link;
+            aPtr = aPtr->link;
+        }
+        while (bPtr != b.head) {
+            tail->link = new Node(bPtr->coef, bPtr->exp, result.head);
+            tail = tail->link;
+            bPtr = bPtr->link;
+        }
+
+        return result;
+    }
+
+    // 多項式減法（this - b）
+    Polynomial operator-(const Polynomial& b) const {
+        Polynomial negB;
+        Node* tail = negB.head;
+        for (Node* p = b.head->link; p != b.head; p = p->link) {
+            tail->link = new Node(-p->coef, p->exp, negB.head);
+            tail = tail->link;
+        }
+        return *this + negB;
+    }
+
+    // 多項式乘法
+    Polynomial operator*(const Polynomial& b) const {
+        Polynomial result;
+        for (Node* aPtr = head->link; aPtr != head; aPtr = aPtr->link) {
+            Polynomial temp;
+            Node* tail = temp.head;
+            for (Node* bPtr = b.head->link; bPtr != b.head; bPtr = bPtr->link) {
+                int c = aPtr->coef * bPtr->coef;
+                int e = aPtr->exp + bPtr->exp;
+                tail->link = new Node(c, e, temp.head);
+                tail = tail->link;
+            }
+            result = result + temp;  // 累加每個乘積
+        }
+        return result;
+    }
+
+    // 多項式數值求值：f(x)
+    float Evaluate(float x) const {
+        float result = 0;
+        for (Node* p = head->link; p != head; p = p->link) {
+            result += p->coef * pow(x, p->exp);
+        }
+        return result;
     }
 };
-// 讀取單一 Term（係數與指數）
-std::istream& operator>>(std::istream& is, Term& term) {
-    return is >> term.coef >> term.exp;
-}
-// 輸出單一 Term，例如 3x^2
-std::ostream& operator<<(std::ostream& os, const Term& term) {
-    os << term.coef << "x^" << term.exp;
-    return os;
-}
-// 讀取 Polynomial：從一整行輸入讀取多個 (係數 指數) 組合
-std::istream& operator>>(std::istream& is, Polynomial& poly) {
-    poly.terms = 0;  // 清空原本的項目數
-    std::string line;
-    std::getline(is, line);             // 讀取整行
-    std::istringstream iss(line);      // 用字串流來逐項讀取
-    float coef; int exp;
-    while (iss >> coef >> exp)
-        poly.addTerm(coef, exp);       // 逐項加入多項式
-    return is;
-}
-// 輸出 Polynomial：轉成數學形式如 "3x^2 + 2x + 1"
-std::ostream& operator<<(std::ostream& os, const Polynomial& poly) {
-    if (poly.terms == 0) {
-        os << "0";
-        return os;
-    }
-    // 排序項目（指數從大到小）
-    ((Polynomial&)poly).sortTerms();
 
-    bool first = true;
-    for (int i = 0; i < poly.terms; ++i) {
-        float c = poly.termArray[i].getCoef();
-        int e = poly.termArray[i].getExp();
-        if (c == 0) continue;  // 跳過係數為 0 的項
-
-        // 處理正負號
-        if (!first) os << (c > 0 ? " + " : " - ");
-        else if (c < 0) os << "-";
-
-        float absC = c < 0 ? -c : c;
-
-        // 如果係數不是 1，或是是常數項，才印出係數
-        if (absC != 1 || e == 0) os << absC;
-
-        // 印出變數與指數
-        if (e > 0) {
-            os << "x";
-            if (e > 1) os << "^" << e;
-        }
-        first = false;
-    }
-    if (first) os << "0"; // 如果都是 0 項，輸出 0
-    return os;
-}
 int main() {
-    Polynomial poly;
-    std::cout << "輸入多項式 (係數 指數): ";
-    std::cin >> poly; 
-    std::cout << "多項式: " << poly << "\n";
+    Polynomial a, b;
+
+    cout << "輸入第一個多項式 (n c1 e1 c2 e2 ...): ";
+    cin >> a;
+    cout << "輸入第二個多項式 (n c1 e1 c2 e2 ...): ";
+    cin >> b;
+
+    cout << "\na(x) = " << a << endl;
+    cout << "b(x) = " << b << endl;
+
+    cout << "\na + b = " << (a + b) << endl;
+    cout << "a - b = " << (a - b) << endl;
+    cout << "a * b = " << (a * b) << endl;
+
+    float x = 2;
+    cout << "\na(" << x << ") = " << a.Evaluate(x) << endl;
+
     return 0;
 }
 
